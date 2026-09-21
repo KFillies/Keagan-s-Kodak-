@@ -1,0 +1,1296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Keagan's Kodaks</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="description" content="Cut one photo into a seamless Instagram carousel.">
+<meta name="theme-color" id="themeColor" content="#F2F2F7">
+
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Kodaks">
+
+<style>
+/* ===========================================================================
+   Apple's system palette, by role rather than by colour, so both appearances
+   come from one set of names. Values are the published iOS system colours.
+   Type is SF Pro, which is already on the device: no webfont, so the app also
+   works with no signal on its very first launch.
+   =========================================================================== */
+:root {
+  color-scheme: light dark;
+
+  --bg:            #F2F2F7;   /* systemGroupedBackground */
+  --card:          #FFFFFF;   /* secondarySystemGroupedBackground */
+  --fill:          rgba(118,118,128,.12);
+  --fill-strong:   rgba(118,118,128,.20);
+  --thumb:         #FFFFFF;
+  --label:         #000000;
+  --label-2:       rgba(60,60,67,.60);
+  --label-3:       rgba(60,60,67,.30);
+  --separator:     rgba(60,60,67,.29);
+  --tint:          #D6452A;
+  --tint-ink:      #FFFFFF;
+  --warn:          #B25000;
+  --seam:          #FF453A;
+
+  --thumb-shadow:  0 3px 8px rgba(0,0,0,.12), 0 3px 1px rgba(0,0,0,.04);
+  --card-shadow:   0 1px 2px rgba(0,0,0,.05);
+  --lift:          0 12px 34px rgba(0,0,0,.16);
+
+  /* Apple's spring for anything the finger drives: critically damped, ~0.4s. */
+  --spring: cubic-bezier(.32, .72, 0, 1);
+
+  --gutter: 16px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:          #000000;
+    --card:        #1C1C1E;
+    --fill:        rgba(118,118,128,.24);
+    --fill-strong: rgba(118,118,128,.32);
+    --thumb:       #636366;
+    --label:       #FFFFFF;
+    --label-2:     rgba(235,235,245,.60);
+    --label-3:     rgba(235,235,245,.30);
+    --separator:   rgba(84,84,88,.65);
+    --tint:        #FF6B52;
+    --tint-ink:    #FFFFFF;
+    --warn:        #FF9F0A;
+    --seam:        #FF453A;
+    --thumb-shadow: 0 3px 8px rgba(0,0,0,.35);
+    --card-shadow: none;
+    --lift:        0 12px 34px rgba(0,0,0,.6);
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg:          #000000;
+  --card:        #1C1C1E;
+  --fill:        rgba(118,118,128,.24);
+  --fill-strong: rgba(118,118,128,.32);
+  --thumb:       #636366;
+  --label:       #FFFFFF;
+  --label-2:     rgba(235,235,245,.60);
+  --label-3:     rgba(235,235,245,.30);
+  --separator:   rgba(84,84,88,.65);
+  --tint:        #FF6B52;
+  --tint-ink:    #FFFFFF;
+  --warn:        #FF9F0A;
+  --seam:        #FF453A;
+  --thumb-shadow: 0 3px 8px rgba(0,0,0,.35);
+  --card-shadow: none;
+  --lift:        0 12px 34px rgba(0,0,0,.6);
+}
+
+/* ------------------------------------------------------------------ shell */
+* { box-sizing: border-box; }
+
+/* The browser's own [hidden] rule is a bare attribute selector, so any class
+   that sets display beats it and the element stays on screen. Every stage and
+   the busy overlay set display by class, so without this they never hide. */
+[hidden] { display: none !important; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  background: var(--bg);
+  color: var(--label);
+  /* SF Pro, straight off the device. */
+  font: 400 17px/1.294 -apple-system, BlinkMacSystemFont, "SF Pro Text",
+        system-ui, "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
+button, input { font: inherit; color: inherit; }
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ---------------------------------------------------------------- nav bar */
+.nav {
+  flex: 0 0 auto;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 var(--gutter);
+  padding-top: env(safe-area-inset-top, 0px);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  box-shadow: inset 0 -0.5px 0 var(--separator);
+  z-index: 5;
+}
+
+/* 17pt semibold, centred: the standard iOS navigation title. */
+.nav h1 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 44px;
+}
+
+/* A bar button: tint-coloured, 17pt regular, no chrome. */
+.nav button {
+  position: absolute;
+  top: env(safe-area-inset-top, 0px);
+  right: var(--gutter);
+  height: 44px;
+  appearance: none;
+  border: 0;
+  background: none;
+  color: var(--tint);
+  font-size: 17px;
+  padding: 0;
+  cursor: pointer;
+}
+.nav button:active { opacity: .3; }
+.nav button:focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; border-radius: 6px; }
+
+/* ----------------------------------------------------------------- stages */
+.stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ------------------------------------------------------------ start / hero */
+#start {
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 0 calc(var(--gutter) + 8px);
+  text-align: center;
+}
+
+/* The real icon art, not a CSS stand-in: its sun and hills are what show
+   that the three panels are one continuous photograph. */
+.hero-icon {
+  width: 104px;
+  height: 104px;
+  border-radius: 23px;
+  box-shadow: var(--lift);
+  margin-bottom: 28px;
+}
+
+.appearance {
+  margin-top: 38px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+}
+
+.appearance .caption {
+  font-size: 13px;
+  letter-spacing: -0.01em;
+  color: var(--label-2);
+}
+
+/* 34pt bold with tight tracking: the iOS large title. */
+#start h2 {
+  margin: 0 0 10px;
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.09;
+  letter-spacing: -0.026em;
+  text-wrap: balance;
+}
+
+#start p {
+  margin: 0 0 32px;
+  max-width: 30ch;
+  color: var(--label-2);
+  font-size: 17px;
+  line-height: 1.32;
+}
+
+/* ------------------------------------------------------------------ strip */
+#compose .scroll { padding-bottom: 8px; }
+
+.strip-wrap {
+  display: grid;
+  place-items: center;
+  padding: 16px var(--gutter) 10px;
+}
+
+.strip {
+  position: relative;
+  width: 100%;
+  background: var(--fill);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--card-shadow);
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.strip.dragging { cursor: grabbing; }
+
+.strip img {
+  position: absolute;
+  max-width: none;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+.seams { position: absolute; inset: 0; pointer-events: none; }
+
+.seam {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed var(--seam);
+}
+
+.badge {
+  position: absolute;
+  top: 5px;
+  font: 600 10px/1 -apple-system, system-ui, sans-serif;
+  color: #fff;
+  background: rgba(0,0,0,.55);
+  border-radius: 99px;
+  padding: 3px 6px;
+  min-width: 17px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* 13pt footnote, the iOS caption size. */
+.hint {
+  margin: 0;
+  padding: 0 calc(var(--gutter) + 4px) 14px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.31;
+  color: var(--label-2);
+  text-wrap: balance;
+}
+
+.warn {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  margin: 0 var(--gutter) 14px;
+  padding: 11px 13px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  color: var(--warn);
+  font-size: 13px;
+  line-height: 1.31;
+}
+
+/* ------------------------------------------------- inset grouped list rows */
+.group {
+  margin: 0 var(--gutter) 18px;
+  background: var(--card);
+  border-radius: 12px;
+  box-shadow: var(--card-shadow);
+  overflow: hidden;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 9px var(--gutter);
+  position: relative;
+}
+/* Separators inset from the label, the way iOS insets them from the text. */
+.row + .row::before {
+  content: "";
+  position: absolute;
+  left: var(--gutter);
+  right: 0;
+  top: 0;
+  height: 0.5px;
+  background: var(--separator);
+}
+
+.row .label {
+  flex: 0 0 auto;
+  font-size: 17px;
+  letter-spacing: -0.02em;
+}
+
+.row .control { flex: 1 1 auto; display: flex; justify-content: flex-end; }
+
+/* ----------------------------------------------------- segmented control */
+.segmented {
+  position: relative;
+  display: flex;
+  background: var(--fill);
+  border-radius: 9px;
+  padding: 2px;
+  min-width: 190px;
+  isolation: isolate;
+}
+
+.segmented .thumb {
+  position: absolute;
+  left: 0;
+  top: 2px;
+  bottom: 2px;
+  border-radius: 7px;
+  background: var(--thumb);
+  box-shadow: var(--thumb-shadow);
+  transition: transform .32s var(--spring), width .32s var(--spring);
+  z-index: 0;
+}
+
+.segmented button {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: font-weight .2s var(--spring);
+  white-space: nowrap;
+}
+.segmented button[aria-selected="true"] { font-weight: 600; }
+.segmented button:active { opacity: .55; }
+.segmented button:focus-visible { outline: 2px solid var(--tint); outline-offset: 1px; }
+
+/* ---------------------------------------------------------------- stepper */
+.stepper-row { display: flex; align-items: center; gap: 12px; }
+
+.stepper-value {
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  color: var(--label-2);
+  min-width: 18px;
+  text-align: right;
+}
+
+.stepper {
+  display: flex;
+  background: var(--fill);
+  border-radius: 9px;
+  overflow: hidden;
+}
+
+.stepper button {
+  appearance: none;
+  border: 0;
+  background: none;
+  width: 47px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  position: relative;
+}
+.stepper button:first-child::after {
+  content: "";
+  position: absolute;
+  right: 0; top: 6px; bottom: 6px;
+  width: 0.5px;
+  background: var(--separator);
+}
+.stepper button:active { background: var(--fill-strong); }
+.stepper button:disabled { opacity: .3; cursor: default; }
+.stepper button:focus-visible { outline: 2px solid var(--tint); outline-offset: -2px; }
+
+.stepper svg { width: 15px; height: 15px; fill: var(--label); }
+
+/* ------------------------------------------------------------- action bar */
+.actions {
+  flex: 0 0 auto;
+  padding: 12px var(--gutter);
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  box-shadow: inset 0 0.5px 0 var(--separator);
+}
+
+/* iOS filled button: 17pt semibold, generous 50px target, tinted. */
+.filled {
+  appearance: none;
+  border: 0;
+  width: 100%;
+  min-height: 50px;
+  border-radius: 14px;
+  background: var(--tint);
+  color: var(--tint-ink);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  cursor: pointer;
+  transition: transform .2s var(--spring), opacity .2s var(--spring);
+}
+.filled:active { transform: scale(.975); opacity: .88; }
+.filled:disabled { opacity: .4; cursor: default; }
+.filled:focus-visible { outline: 2px solid var(--label); outline-offset: 2px; }
+
+/* iOS plain button: tint text, no container. */
+.plain {
+  appearance: none;
+  border: 0;
+  background: none;
+  width: 100%;
+  min-height: 46px;
+  color: var(--tint);
+  font-size: 17px;
+  cursor: pointer;
+  border-radius: 10px;
+}
+.plain:active { opacity: .3; }
+.plain:focus-visible { outline: 2px solid var(--tint); outline-offset: -2px; }
+
+/* ----------------------------------------------------------------- review */
+#review { gap: 0; }
+
+.deck-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding-block: 14px;
+}
+.deck-scroll::-webkit-scrollbar { display: none; }
+
+.deck-scroll figure {
+  flex: 0 0 auto;
+  margin: 0;
+  scroll-snap-align: center;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--lift);
+  background: var(--fill);
+}
+.deck-scroll img { display: block; width: 100%; height: auto; }
+
+/* iOS page control. */
+.dots {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: center;
+  gap: 7px;
+  padding: 4px 0 10px;
+}
+.dot {
+  width: 7px; height: 7px;
+  border-radius: 99px;
+  background: var(--label);
+  opacity: .18;
+  transition: opacity .3s var(--spring);
+}
+.dot.on { opacity: .85; }
+
+.note {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0 calc(var(--gutter) + 8px) 14px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.31;
+  color: var(--label-2);
+  text-wrap: balance;
+}
+
+/* ------------------------------------------------------------------- busy */
+.busy {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  z-index: 20;
+  text-align: center;
+}
+
+.busy .panel {
+  background: var(--card);
+  border-radius: 14px;
+  padding: 22px 26px;
+  box-shadow: var(--lift);
+  min-width: 170px;
+}
+
+.spinner {
+  width: 24px; height: 24px;
+  border: 2.5px solid var(--fill-strong);
+  border-top-color: var(--tint);
+  border-radius: 99px;
+  animation: spin .8s linear infinite;
+  margin: 0 auto 12px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.busy div[id] { font-size: 15px; color: var(--label-2); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+
+<body>
+<div id="app">
+  <nav class="nav">
+    <h1 id="navTitle">Kodaks</h1>
+    <button id="restart" hidden>New Photo</button>
+  </nav>
+
+  <!-- -------------------------------------------------------------- start -->
+  <section class="stage" id="start">
+    <img class="hero-icon" id="heroIcon" src="icons/icon-512.png" alt=""
+         width="104" height="104">
+    <h2>One photo,<br>every slide</h2>
+    <p>Split a wide photo across a carousel so the seams disappear when someone
+       swipes.</p>
+    <button class="filled" id="pick" style="max-width:300px">Choose Photo</button>
+    <input type="file" id="file" accept="image/*" class="sr">
+
+    <div class="appearance">
+      <span class="caption" id="lbl-appearance">Appearance</span>
+      <div id="themeControl" aria-labelledby="lbl-appearance"></div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------ compose -->
+  <section class="stage" id="compose" hidden>
+    <div class="scroll">
+      <div class="strip-wrap">
+        <div class="strip" id="strip">
+          <img id="photo" alt="">
+          <div class="seams" id="seams"></div>
+        </div>
+      </div>
+
+      <p class="hint" id="hint">Drag to reposition. Pinch to zoom.</p>
+
+      <p class="warn" id="softWarn" hidden>
+        <span aria-hidden="true">&#9888;&#65038;</span>
+        <span id="softWarnText"></span>
+      </p>
+
+      <div class="group">
+        <div class="row">
+          <span class="label" id="lbl-slides">Slides</span>
+          <div class="control"><div class="stepper-row" id="slideControl"></div></div>
+        </div>
+        <div class="row">
+          <span class="label" id="lbl-shape">Shape</span>
+          <div class="control" id="shapeControl"></div>
+        </div>
+        <div class="row">
+          <span class="label" id="lbl-fill">Photo</span>
+          <div class="control" id="modeControl"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="filled" id="toReview">Review Slides</button>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------- review -->
+  <section class="stage" id="review" hidden>
+    <div class="deck-scroll" id="deckScroll"></div>
+    <div class="dots" id="dots"></div>
+    <p class="note" id="reviewNote"></p>
+
+    <div class="actions">
+      <button class="filled" id="save">Save to Photos</button>
+      <button class="plain" id="back">Keep Editing</button>
+    </div>
+  </section>
+</div>
+
+<div class="busy" id="busy" hidden>
+  <div class="panel">
+    <div class="spinner"></div>
+    <div id="busyText">Opening photo</div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* Instagram's upload width. Everything is measured in these "canvas units",
+   so one unit is one exported pixel and the seam arithmetic stays exact. */
+const SLIDE_W = 1080;
+
+const SHAPES = {
+  '4:5':  { h: 1350, label: '4:5',  name: 'Portrait post' },
+  '1:1':  { h: 1080, label: '1:1',  name: 'Square post' },
+  '9:16': { h: 1920, label: '9:16', name: 'Story' }
+};
+
+const el = (id) => document.getElementById(id);
+const els = {
+  restart: el('restart'), start: el('start'), compose: el('compose'), review: el('review'),
+  pick: el('pick'), file: el('file'),
+  strip: el('strip'), photo: el('photo'), seams: el('seams'),
+  hint: el('hint'), softWarn: el('softWarn'), softWarnText: el('softWarnText'),
+  slideControl: el('slideControl'), shapeControl: el('shapeControl'), modeControl: el('modeControl'),
+  navTitle: el('navTitle'), themeControl: el('themeControl'),
+  themeColor: el('themeColor'), heroIcon: el('heroIcon'),
+  toReview: el('toReview'), deckScroll: el('deckScroll'), dots: el('dots'),
+  reviewNote: el('reviewNote'), save: el('save'), back: el('back'),
+  busy: el('busy'), busyText: el('busyText')
+};
+
+const state = {
+  source: null,        // HTMLImageElement, already upright
+  sourceW: 0,
+  sourceH: 0,
+  fileName: 'Kodaks',
+  slides: 3,
+  shape: '4:5',
+  mode: 'fill',
+  x: 0, y: 0, w: 0, h: 0,   // photo placement, in canvas units
+  rendered: []              // {file, url} per slide
+};
+
+/* ------------------------------------------------------------- geometry */
+
+function dims() {
+  const slideH = SHAPES[state.shape].h;
+  return {
+    slideW: SLIDE_W,
+    slideH,
+    canvasW: SLIDE_W * state.slides,
+    canvasH: slideH
+  };
+}
+
+const sourceAspect = () => (state.sourceH ? state.sourceW / state.sourceH : 1);
+
+/** Width at which the photo exactly covers the canvas. */
+function coverWidth() {
+  const { canvasW, canvasH } = dims();
+  return Math.max(canvasW, canvasH * sourceAspect());
+}
+
+/** Width at which the whole photo fits inside the canvas. */
+function containWidth() {
+  const { canvasW, canvasH } = dims();
+  return Math.min(canvasW, canvasH * sourceAspect());
+}
+
+/** Lay the photo out fresh for the current shape, slide count and fill mode. */
+function fitPhoto() {
+  const { canvasW, canvasH } = dims();
+  state.w = state.mode === 'fill' ? coverWidth() : containWidth();
+  state.h = state.w / sourceAspect();
+  state.x = (canvasW - state.w) / 2;
+  state.y = (canvasH - state.h) / 2;
+}
+
+/** In fill mode the photo may never expose the background: that is the single
+    most common way a carousel comes out wrong, so the drag is simply bounded. */
+function clampPlacement() {
+  const { canvasW, canvasH } = dims();
+  if (state.mode !== 'fill') return;
+  state.x = Math.min(0, Math.max(canvasW - state.w, state.x));
+  state.y = Math.min(0, Math.max(canvasH - state.h, state.y));
+}
+
+/* -------------------------------------------------------------- drawing */
+
+function layout() {
+  const { canvasW, canvasH } = dims();
+
+  els.strip.style.aspectRatio = canvasW + ' / ' + canvasH;
+
+  const pct = (value, total) => (value / total * 100) + '%';
+  els.photo.style.left   = pct(state.x, canvasW);
+  els.photo.style.top    = pct(state.y, canvasH);
+  els.photo.style.width  = pct(state.w, canvasW);
+  els.photo.style.height = pct(state.h, canvasH);
+
+  els.seams.innerHTML = '';
+  for (let i = 0; i < state.slides; i++) {
+    if (i > 0) {
+      const line = document.createElement('div');
+      line.className = 'seam';
+      line.style.left = (i / state.slides * 100) + '%';
+      els.seams.appendChild(line);
+    }
+    const badge = document.createElement('div');
+    badge.className = 'badge';
+    badge.style.left = 'calc(' + (i / state.slides * 100) + '% + 5px)';
+    badge.textContent = String(i + 1);
+    els.seams.appendChild(badge);
+  }
+
+  updateSoftWarning();
+  updateHint();
+}
+
+/** Warn before export, not after, when the source cannot hold the width. */
+function updateSoftWarning() {
+  const needed = SLIDE_W * state.slides;
+  const effective = state.sourceW * (dims().canvasW / state.w);
+  if (!state.source || effective >= needed * 0.9) {
+    els.softWarn.hidden = true;
+    return;
+  }
+  els.softWarn.hidden = false;
+  els.softWarnText.textContent =
+    'This photo gives about ' + Math.round(effective) + ' px across ' + state.slides +
+    ' slides, where ' + needed + ' px is ideal. The export will look soft.';
+}
+
+/* ------------------------------------------------------------- controls */
+
+/** An iOS segmented control: a filled track with a thumb that slides between
+    the options. The thumb is a separate element rather than a background on
+    the selected button, so the move can be animated. */
+function segmented(container, options, selected, onPick) {
+  container.innerHTML = '';
+
+  const track = document.createElement('div');
+  track.className = 'segmented';
+  track.setAttribute('role', 'tablist');
+
+  const thumb = document.createElement('div');
+  thumb.className = 'thumb';
+  track.appendChild(thumb);
+
+  options.forEach(([value, label]) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.setAttribute('role', 'tab');
+    button.setAttribute('aria-selected', value === selected ? 'true' : 'false');
+    button.dataset.value = value;
+    button.textContent = label;
+    button.addEventListener('click', () => onPick(value));
+    track.appendChild(button);
+  });
+
+  container.appendChild(track);
+  return track;
+}
+
+/** Put every thumb over its selected segment. Widths are only measurable once
+    the stage is on screen, so this runs again whenever one is revealed. */
+function syncSegments(immediate) {
+  document.querySelectorAll('.segmented').forEach((track) => {
+    const thumb = track.querySelector('.thumb');
+    const buttons = Array.from(track.querySelectorAll('button'));
+    const index = buttons.findIndex((b) => b.getAttribute('aria-selected') === 'true');
+    if (!thumb || index < 0 || !buttons[index].offsetWidth) return;
+
+    if (immediate) thumb.style.transition = 'none';
+    thumb.style.width = buttons[index].offsetWidth + 'px';
+    thumb.style.transform = 'translateX(' + buttons[index].offsetLeft + 'px)';
+    if (immediate) {
+      // Force a reflow so the jump lands before transitions come back on.
+      void thumb.offsetWidth;
+      thumb.style.transition = '';
+    }
+  });
+}
+
+const GLYPH = {
+  minus: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.4" y="7.1" width="13.2" height="1.8" rx=".9"/></svg>',
+  plus:  '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M7.1 1.4h1.8v5.7h5.7v1.8H8.9v5.7H7.1V8.9H1.4V7.1h5.7z"/></svg>'
+};
+
+/** An iOS stepper: the value, then a two-part minus/plus pill. */
+function stepper(container, value, min, max, onChange) {
+  container.innerHTML = '';
+
+  const readout = document.createElement('span');
+  readout.className = 'stepper-value';
+  readout.textContent = String(value);
+
+  const pill = document.createElement('div');
+  pill.className = 'stepper';
+
+  const make = (glyph, delta, label, disabled) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.innerHTML = GLYPH[glyph];
+    button.setAttribute('aria-label', label);
+    button.disabled = disabled;
+    button.addEventListener('click', () => onChange(value + delta));
+    return button;
+  };
+
+  pill.appendChild(make('minus', -1, 'One slide fewer', value <= min));
+  pill.appendChild(make('plus', 1, 'One slide more', value >= max));
+
+  container.appendChild(readout);
+  container.appendChild(pill);
+}
+
+function updateHint() {
+  els.hint.textContent = state.mode === 'fill'
+    ? 'Drag to reposition. Pinch to zoom. Fill crops to the slide edges.'
+    : 'Drag to reposition. Pinch to zoom. Fit shows the whole photo.';
+}
+
+function buildControls() {
+  stepper(els.slideControl, state.slides, 2, 10, (next) => {
+    state.slides = Math.min(10, Math.max(2, next));
+    fitPhoto();
+    buildControls();
+    layout();
+  });
+
+  segmented(
+    els.shapeControl,
+    Object.keys(SHAPES).map((key) => [key, SHAPES[key].label]),
+    state.shape,
+    (key) => {
+      state.shape = key;
+      fitPhoto();
+      buildControls();
+      layout();
+      syncSegments(false);
+    }
+  );
+
+  segmented(
+    els.modeControl,
+    [['fill', 'Fill'], ['fit', 'Fit']],
+    state.mode,
+    (key) => {
+      state.mode = key;
+      fitPhoto();
+      buildControls();
+      layout();
+      syncSegments(false);
+    }
+  );
+
+  syncSegments(true);
+}
+
+/* ----------------------------------------------------------- appearance */
+
+/* System follows the phone; Light and Dark override it. The CSS already
+   keys off [data-theme], with the dark media query guarded so an explicit
+   Light still wins over a dark OS. */
+const THEME_KEY = 'kodaks.appearance';
+const THEMES = [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']];
+
+function readTheme() {
+  try {
+    const saved = localStorage.getItem(THEME_KEY);
+    return THEMES.some(([value]) => value === saved) ? saved : 'system';
+  } catch (error) {
+    return 'system';   // private browsing, or site data blocked
+  }
+}
+
+function writeTheme(value) {
+  try { localStorage.setItem(THEME_KEY, value); } catch (error) { /* fine */ }
+}
+
+/** True when dark is what the viewer will actually see right now. */
+function darkIsActive() {
+  const chosen = readTheme();
+  if (chosen === 'dark') return true;
+  if (chosen === 'light') return false;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+
+function applyTheme(value) {
+  const root = document.documentElement;
+  if (value === 'system') {
+    root.removeAttribute('data-theme');
+  } else {
+    root.setAttribute('data-theme', value);
+  }
+
+  // The status bar area of a home-screen app takes its colour from here, so
+  // it has to track the override rather than the media query.
+  const background = getComputedStyle(root).getPropertyValue('--bg').trim();
+  if (background) els.themeColor.setAttribute('content', background);
+
+  // A near-white icon plate glares on a black ground, so the mark has its own
+  // dark cut.
+  els.heroIcon.src = darkIsActive() ? 'icons/icon-dark-512.png' : 'icons/icon-512.png';
+}
+
+function buildAppearance() {
+  const chosen = readTheme();
+  segmented(els.themeControl, THEMES, chosen, (value) => {
+    writeTheme(value);
+    applyTheme(value);
+    buildAppearance();
+    syncSegments(false);
+  });
+}
+
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if (readTheme() === 'system') applyTheme('system');
+});
+
+/* -------------------------------------------------------------- gestures */
+
+const pointers = new Map();
+let gesture = null;
+
+function stripToCanvas() {
+  return dims().canvasW / els.strip.getBoundingClientRect().width;
+}
+
+function midpoint(points) {
+  const list = Array.from(points.values());
+  return {
+    x: (list[0].x + list[1].x) / 2,
+    y: (list[0].y + list[1].y) / 2,
+    d: Math.hypot(list[0].x - list[1].x, list[0].y - list[1].y)
+  };
+}
+
+els.strip.addEventListener('pointerdown', (event) => {
+  if (!state.source) return;
+  els.strip.setPointerCapture(event.pointerId);
+  pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  els.strip.classList.add('dragging');
+
+  if (pointers.size === 1) {
+    gesture = { kind: 'drag', x: state.x, y: state.y, startX: event.clientX, startY: event.clientY };
+  } else if (pointers.size === 2) {
+    const m = midpoint(pointers);
+    gesture = { kind: 'pinch', w: state.w, x: state.x, y: state.y, d: m.d, mx: m.x, my: m.y };
+  }
+});
+
+els.strip.addEventListener('pointermove', (event) => {
+  if (!pointers.has(event.pointerId) || !gesture) return;
+  pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  const scale = stripToCanvas();
+
+  if (gesture.kind === 'drag' && pointers.size === 1) {
+    state.x = gesture.x + (event.clientX - gesture.startX) * scale;
+    state.y = gesture.y + (event.clientY - gesture.startY) * scale;
+  } else if (gesture.kind === 'pinch' && pointers.size === 2) {
+    const m = midpoint(pointers);
+    if (gesture.d > 0) {
+      const floor = state.mode === 'fill' ? coverWidth() : containWidth() * 0.25;
+      const nextW = Math.max(floor, Math.min(gesture.w * (m.d / gesture.d), coverWidth() * 8));
+      const ratio = nextW / gesture.w;
+      // Zoom about the fingers, not the centre, so the photo stays under them.
+      const anchorX = (gesture.mx - els.strip.getBoundingClientRect().left) * scale;
+      const anchorY = (gesture.my - els.strip.getBoundingClientRect().top) * scale;
+      state.x = anchorX - (anchorX - gesture.x) * ratio;
+      state.y = anchorY - (anchorY - gesture.y) * ratio;
+      state.w = nextW;
+      state.h = nextW / sourceAspect();
+    }
+  }
+
+  clampPlacement();
+  layout();
+  event.preventDefault();
+}, { passive: false });
+
+function endPointer(event) {
+  pointers.delete(event.pointerId);
+  if (pointers.size === 0) {
+    gesture = null;
+    els.strip.classList.remove('dragging');
+  } else if (pointers.size === 1) {
+    const only = Array.from(pointers.entries())[0];
+    gesture = { kind: 'drag', x: state.x, y: state.y, startX: only[1].x, startY: only[1].y };
+  }
+}
+els.strip.addEventListener('pointerup', endPointer);
+els.strip.addEventListener('pointercancel', endPointer);
+
+/* ---------------------------------------------------------------- stages */
+
+const TITLES = { start: 'Kodaks', compose: 'Adjust', review: 'Review' };
+
+function show(stage) {
+  els.start.hidden = stage !== 'start';
+  els.compose.hidden = stage !== 'compose';
+  els.review.hidden = stage !== 'review';
+  els.restart.hidden = stage === 'start';
+  els.navTitle.textContent = TITLES[stage];
+  // Segment widths are unmeasurable while a stage is hidden, so place the
+  // thumbs the moment it becomes visible.
+  syncSegments(true);
+}
+
+function busy(on, text) {
+  els.busy.hidden = !on;
+  if (text) els.busyText.textContent = text;
+}
+
+/* ----------------------------------------------------------------- input */
+
+els.pick.addEventListener('click', () => els.file.click());
+
+els.file.addEventListener('change', async () => {
+  const file = els.file.files && els.file.files[0];
+  if (!file) return;
+  busy(true, 'Opening photo');
+  try {
+    await loadPhoto(file);
+    show('compose');
+  } catch (error) {
+    alert('That photo could not be opened. Try a different one.');
+  } finally {
+    busy(false);
+    els.file.value = '';
+  }
+});
+
+function loadPhoto(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    // Browsers apply EXIF orientation to <img> for us, and canvas drawImage
+    // then inherits it, so no manual rotation is needed.
+    image.onload = () => {
+      state.source = image;
+      state.sourceW = image.naturalWidth;
+      state.sourceH = image.naturalHeight;
+      state.fileName = (file.name || 'Kodaks').replace(/\.[^.]+$/, '').slice(0, 40) || 'Kodaks';
+      els.photo.src = url;
+      els.photo.alt = 'Your photo, laid across the carousel';
+      state.slides = suggestedSlides();
+      fitPhoto();
+      buildControls();
+      layout();
+      resolve();
+    };
+    image.onerror = () => { URL.revokeObjectURL(url); reject(new Error('decode failed')); };
+    image.src = url;
+  });
+}
+
+/** How many slides this photo's own shape would fill edge to edge. */
+function suggestedSlides() {
+  const slideRatio = SLIDE_W / SHAPES[state.shape].h;
+  const wide = sourceAspect() / slideRatio;
+  return Math.min(10, Math.max(2, Math.round(wide)));
+}
+
+/* ---------------------------------------------------------------- render */
+
+function renderSlide(index) {
+  const { slideW, slideH } = dims();
+  const canvas = document.createElement('canvas');
+  canvas.width = slideW;
+  canvas.height = slideH;
+
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, slideW, slideH);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  // Shifting the whole photo left by one slide per step is what guarantees the
+  // seams line up: every slide is a window onto the same single placement.
+  ctx.drawImage(state.source, state.x - slideW * index, state.y, state.w, state.h);
+
+  return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.95));
+}
+
+async function renderAll() {
+  state.rendered.forEach((item) => URL.revokeObjectURL(item.url));
+  state.rendered = [];
+
+  const pad = state.slides >= 10 ? 2 : 1;
+  for (let i = 0; i < state.slides; i++) {
+    busy(true, 'Rendering slide ' + (i + 1) + ' of ' + state.slides);
+    const blob = await renderSlide(i);
+    const name = state.fileName + '-' + String(i + 1).padStart(pad, '0') + '.jpg';
+    state.rendered.push({
+      file: new File([blob], name, { type: 'image/jpeg' }),
+      url: URL.createObjectURL(blob)
+    });
+  }
+}
+
+/** Make each slide as large as the space genuinely allows, for whatever
+    shape is selected, rather than assuming a 4:5 portrait. */
+function sizeReview() {
+  const ratio = SLIDE_W / SHAPES[state.shape].h;
+  const room = els.deckScroll.clientHeight || window.innerHeight * 0.5;
+  const width = Math.max(120, Math.min(window.innerWidth * 0.78, (room - 16) * ratio));
+  Array.from(els.deckScroll.children).forEach((figure) => {
+    figure.style.width = width + 'px';
+  });
+  const gutter = Math.max(0, (els.deckScroll.clientWidth - width) / 2);
+  els.deckScroll.style.paddingInline = gutter + 'px';
+}
+
+function paintReview() {
+  els.deckScroll.innerHTML = '';
+  els.dots.innerHTML = '';
+
+  state.rendered.forEach((item, i) => {
+    const figure = document.createElement('figure');
+    const image = document.createElement('img');
+    image.src = item.url;
+    image.alt = 'Slide ' + (i + 1) + ' of ' + state.slides;
+    figure.appendChild(image);
+    els.deckScroll.appendChild(figure);
+
+    const dot = document.createElement('span');
+    dot.className = 'dot' + (i === 0 ? ' on' : '');
+    els.dots.appendChild(dot);
+  });
+
+  sizeReview();
+
+  els.reviewNote.textContent =
+    'Swipe to check the seams. Saving puts ' + state.slides +
+    ' photos in your library, numbered 1 to ' + state.slides +
+    '. Tap them in that order when you post.';
+}
+
+els.deckScroll.addEventListener('scroll', () => {
+  const figures = els.deckScroll.children;
+  if (!figures.length) return;
+  const middle = els.deckScroll.scrollLeft + els.deckScroll.clientWidth / 2;
+  let best = 0;
+  let bestDistance = Infinity;
+  for (let i = 0; i < figures.length; i++) {
+    const centre = figures[i].offsetLeft + figures[i].offsetWidth / 2;
+    const distance = Math.abs(centre - middle);
+    if (distance < bestDistance) { bestDistance = distance; best = i; }
+  }
+  Array.from(els.dots.children).forEach((dot, i) => dot.classList.toggle('on', i === best));
+}, { passive: true });
+
+/* ------------------------------------------------------------ navigation */
+
+els.toReview.addEventListener('click', async () => {
+  try {
+    await renderAll();
+    show('review');
+    paintReview();
+    els.deckScroll.scrollLeft = 0;
+  } catch (error) {
+    alert('Those slides could not be rendered. Try fewer slides or a smaller photo.');
+  } finally {
+    busy(false);
+  }
+});
+
+els.back.addEventListener('click', () => show('compose'));
+
+els.restart.addEventListener('click', () => {
+  state.rendered.forEach((item) => URL.revokeObjectURL(item.url));
+  state.rendered = [];
+  state.source = null;
+  els.photo.removeAttribute('src');
+  show('start');
+});
+
+/* ---------------------------------------------------------------- saving */
+
+els.save.addEventListener('click', async () => {
+  const files = state.rendered.map((item) => item.file);
+  if (!files.length) return;
+
+  // The files are rendered before this screen appears precisely so that the
+  // share call happens inside the tap, while the browser still counts it as a
+  // user gesture. Rendering here would lose that and iOS would refuse.
+  if (navigator.canShare && navigator.canShare({ files })) {
+    try {
+      await navigator.share({ files, title: state.fileName });
+      return;
+    } catch (error) {
+      if (error && error.name === 'AbortError') return;
+    }
+  }
+  downloadEach();
+});
+
+/** Fallback for browsers without file sharing: one download per slide. */
+function downloadEach() {
+  state.rendered.forEach((item, i) => {
+    setTimeout(() => {
+      const link = document.createElement('a');
+      link.href = item.url;
+      link.download = item.file.name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }, i * 220);
+  });
+  els.reviewNote.textContent =
+    'Your browser cannot hand images straight to Photos, so they are downloading instead.';
+}
+
+/* ------------------------------------------------------------------ boot */
+
+function reflow() {
+  if (!state.source) return;
+  layout();
+  syncSegments(true);
+  if (!els.review.hidden) sizeReview();
+}
+window.addEventListener('resize', reflow);
+window.addEventListener('orientationchange', reflow);
+
+buildAppearance();
+applyTheme(readTheme());
+buildControls();
+show('start');
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => { /* offline is a bonus */ });
+  });
+}
+</script>
+</body>
+</html>
